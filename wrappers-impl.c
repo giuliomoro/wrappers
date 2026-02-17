@@ -11,6 +11,9 @@
 #include <evl/evl.h>
 static int verbose = 0;
 
+int getrtid() { // relative thread id
+	return gettid() - getpid();
+}
 enum {
 	kLen = 100,
 };
@@ -109,7 +112,7 @@ WRAPPER_IMPL(int, pthread_cond_init, (pthread_cond_t* cond,  pthread_condattr_t 
 	} else {
 		free(e);
 	}
-	return ret;
+	return ret < 0 ? -ret : 0;
 }
 
 WRAPPER_IMPL(int, pthread_cond_destroy, (pthread_cond_t* cond))
@@ -123,17 +126,32 @@ WRAPPER_IMPL(int, pthread_cond_destroy, (pthread_cond_t* cond))
 
 WRAPPER_IMPL(int, pthread_cond_wait, (pthread_cond_t* cond, pthread_mutex_t* mutex))
 {
-	return evl_wait_event(evlGetCond(cond), evlGetMtx(mutex));
+	verbose > 1 && printf("%d pthread_cond_wait %p=%p %p=%p\n", getrtid(), cond, evlGetCond(cond), mutex, evlGetMtx(mutex));
+	int ret = evl_wait_event(evlGetCond(cond), evlGetMtx(mutex));
+	if(ret) {
+		verbose && fprintf(stderr, "wrappers: pthread_cond_wait() errored %d\n", ret);
+	} else {
+		verbose > 1 && printf("%d pthread_cond_wait %p=%p %p=%p => %d\n", getrtid(), cond, evlGetCond(cond), mutex, evlGetMtx(mutex), ret);
+	}
+	return ret;
 }
 
 WRAPPER_IMPL(int, pthread_cond_timedwait, (pthread_cond_t* cond, pthread_mutex_t* mutex, const struct timespec *abstime))
 {
-	return evl_timedwait_event(evlGetCond(cond), evlGetMtx(mutex), abstime);
+	verbose > 1 && printf("%d pthred_cond_timedwait %p=%p %p=%p\n", getrtid(), cond, evlGetCond(cond), mutex, evlGetMtx(mutex));
+	int ret = evl_timedwait_event(evlGetCond(cond), evlGetMtx(mutex), abstime);
+	verbose > 1 && printf("%d pthred_cond_timedwait %p=%p %p=%p => %d\n", getrtid(), cond, evlGetCond(cond), mutex, evlGetMtx(mutex), ret);
+	return -ret;
 }
 
 WRAPPER_IMPL(int, pthread_cond_signal, (pthread_cond_t* cond))
 {
-	return evl_signal_event(evlGetCond(cond));
+	verbose > 1 && printf("%d pthread_cond_signal %p=%p\n", getrtid(), cond, evlGetCond(cond));
+	int ret = evl_signal_event(evlGetCond(cond));
+	if(ret) {
+		verbose && fprintf(stderr, "wrappers: pthread_cond_signal() couldn't signal: %d\n", ret);
+	}
+	return ret;
 }
 
 WRAPPER_IMPL(int, pthread_cond_broadcast, (pthread_cond_t* cond))
@@ -173,10 +191,10 @@ WRAPPER_IMPL(int, pthread_mutex_init, (pthread_mutex_t* mtx, const pthread_mutex
 	if(ret >= 0) {
 		evlAddMtx(mtx, m);
 	} else {
-		fprintf(stderr, "wrappers: pthread_mutex_init(): evl_create_mutex(\"mutex:%d:%p\") returned %d\n", getpid(), m, ret);
+		fprintf(stderr, "wrappers: pthread_mutex_init(): evl_create_mutex(\"mutex:%d:%p\") returned %d %s\n", getpid(), m, ret, strerrorname_np(-ret));
 		free(m);
 	}
-	return ret;
+	return ret < 0 ? -ret : 0;
 }
 
 WRAPPER_IMPL(int, pthread_mutex_destroy, (pthread_mutex_t* mtx))
@@ -190,7 +208,14 @@ WRAPPER_IMPL(int, pthread_mutex_destroy, (pthread_mutex_t* mtx))
 
 WRAPPER_IMPL(int, pthread_mutex_lock, (pthread_mutex_t* mtx))
 {
-	return evl_lock_mutex(evlGetMtx(mtx));
+	verbose > 1 && printf("%d pthread_mutex_lock() %p=%p\n", getrtid(), mtx, evlGetMtx(mtx));
+	int ret = evl_lock_mutex(evlGetMtx(mtx));
+	if(ret) {
+		verbose && fprintf(stderr, "wrappers: pthread_mutex_lock() couldn't lock: %d\n", ret);
+	} else {
+		verbose > 1 && printf("%d pthread_mutex_locked() %p=%p\n", getrtid(), mtx, evlGetMtx(mtx));
+	}
+	return -ret;
 }
 
 WRAPPER_IMPL(int, pthread_mutex_trylock, (pthread_mutex_t* mtx))
@@ -200,7 +225,12 @@ WRAPPER_IMPL(int, pthread_mutex_trylock, (pthread_mutex_t* mtx))
 
 WRAPPER_IMPL(int, pthread_mutex_unlock, (pthread_mutex_t* mtx))
 {
-	return evl_unlock_mutex(evlGetMtx(mtx));
+	verbose > 1 && printf("%d pthread_mutex_unlock() %p=%p\n", getrtid(), mtx, evlGetMtx(mtx));
+	int ret = evl_unlock_mutex(evlGetMtx(mtx));
+	if(ret) {
+		verbose && fprintf(stderr, "wrappers: pthread_mutex_unlock() couldn't unlock: %d\n", ret);
+	}
+	return -ret;
 }
 
 struct TrampolineArgs {
