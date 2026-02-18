@@ -238,6 +238,18 @@ struct TrampolineArgs {
 	void* restrict arg;
 };
 
+static void allCores() {
+	cpu_set_t set;
+	CPU_ZERO(&set);
+	for(unsigned int n = 0; n < CPU_SETSIZE; ++n)
+		CPU_SET(n, &set);
+
+	if(sched_setaffinity(gettid(), sizeof(set), &set) == -1) {
+		fprintf(stderr, "wrappers: sched_setaffinity error\n");
+		abort();
+	}
+}
+
 static void* trampoline(void* arg) {
 	struct TrampolineArgs* a = (struct TrampolineArgs*)arg;
 	verbose && printf("started thread %p %p\n", a->start_routine, a->arg);
@@ -245,6 +257,7 @@ static void* trampoline(void* arg) {
 	if(efd < 0)
 		fprintf(stderr, "wrappers: evl_attach_thread failed with %s (%d)\n", strerror(-efd), -efd);
 	else {
+		allCores();
 		int flags = 0;
 #ifdef CATCH_MSW
 		flags = EVL_T_WOSS | EVL_T_WOLI | EVL_T_WOSX | EVL_T_HMSIG;
